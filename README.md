@@ -1,13 +1,15 @@
 # kaijutuoersuo
-开局托儿所自动运行策略
+开局托儿所自动运行策略_windows
 
 ## 使用说明
 
-1、安装配置[tesseract](https://digi.bib.uni-mannheim.de/tesseract/)，并在recognizeNum文件配置地址
+1、解压Tesseract-OCR.zip到当前目录
 
 2、安装python后，pip install -r requirements.txt
 
 3、PC端使用微信打开“开局托儿所”小程序，在游戏界面内点击“开始挑战”后，等页面稳定倒计时后，运行 python main.py
+
+* 自动看广告可以在点开无限脑力后，运行python watchVideo.py
 
 *破纪录后需要领取东西，可能导致软件退出
 
