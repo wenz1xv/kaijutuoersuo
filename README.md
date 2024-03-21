@@ -1,13 +1,13 @@
 # kaijutuoersuo
+本分支不采用OCR，使用cv2根据预定义数字匹配识别
+
 开局托儿所自动运行策略_windows
 
 ## 使用说明
 
-1、解压Tesseract-OCR.zip到当前目录
+1、安装python后，pip install -r requirements.txt
 
-2、安装python后，pip install -r requirements.txt
-
-3、PC端使用微信打开“开局托儿所”小程序，在游戏界面内点击“开始挑战”后，等页面稳定倒计时后，运行 python main.py
+2、PC端使用微信打开“开局托儿所”小程序，在游戏界面内点击“开始挑战”后，等页面稳定倒计时后，运行 python main.py
 
 * 自动看广告可以在点开无限脑力后，运行python watchVideo.py
 

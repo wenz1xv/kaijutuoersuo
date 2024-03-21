@@ -1,23 +1,24 @@
-# new
+# 匹配方式识别数字
 import pyautogui
 import pygetwindow as gw
-import time
 import numpy as np
-import pytesseract
-import os
 import cv2
+import pickle
+import time
 from multiprocessing import Pool
 
-os.environ['TESSDATA_PREFIX'] = r'Tesseract-OCR\tessdata'
-pytesseract.pytesseract.tesseract_cmd = r'Tesseract-OCR\tesseract.exe'
+template = pickle.load(open('template.pkl', 'rb'))
 
 def recognize_digit(image):
-    # 预处理图像，例如二值化处理
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _, thresholded = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY)
-    # 使用 pytesseract 进行数字识别
-    digit = pytesseract.image_to_string(thresholded, lang='eng', config='--psm 6 digits -c tessedit_char_whitelist=123456789')  # --psm 6 表示按行识别
-    return digit.strip()
+    _, image_ = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY)
+    height, width = image_.shape
+    scores = np.zeros(10)
+    for number, template_img in template.items():
+        template_img = cv2.resize(template_img, (width, height))
+        score = cv2.matchTemplate(image_[:-3,3:], template_img[:-3,3:], cv2.TM_CCOEFF)
+        scores[int(number)] = score[0]
+    return np.argmax(scores)
 
 def get_intersection(h_line, v_line):
     rho_h, theta_h = h_line
@@ -31,9 +32,7 @@ def get_intersection(h_line, v_line):
     return x, y
 
 class Recognizer:
-    def __init__(self, tessert_path='Tesseract-OCR', thread=1):
-        os.environ['TESSDATA_PREFIX'] =  tessert_path+'\tessdata'
-        pytesseract.pytesseract.tesseract_cmd = tessert_path+'\tesseract.exe'
+    def __init__(self, thread=1):
         self.thread=thread
 
     def find_all_squares(self):
@@ -239,7 +238,7 @@ class eliminater:
         print('\t截图中……')
         screenshot = self.capture_window()
         if screenshot is not None:
-            print('\t识别图像中，请耐心等待……')
+            print('\t匹配模式识别图像中，请耐心等待……')
             matrix, self.digit_squares = self.recoginer.get_matrix(screenshot)
             try:
                 self.matrix = np.array(matrix).astype(int) 
