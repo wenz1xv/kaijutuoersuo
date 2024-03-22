@@ -146,8 +146,12 @@ class eliminater:
         else:
             raise NameError('Unknow system')
         print(f'初始化成功，窗口坐标为：{self.anchor}, 窗口高度为： {self.oheight}, 窗口宽度为：{self.owidth}')
-        self.wscale = self.owidth / self.width * 1.
-        self.hscale = self.oheight / self.height * 1.
+        self.scale = self.owidth / self.width * 1.
+        if int(self.scale*self.height) != int(self.oheight):
+            delta = int(self.oheight - self.scale*self.height)
+            self.anchor = (self.anchor[0], self.anchor[1]+delta)
+            self.oheight = int(self.oheight - delta)
+            print(f'重新调整窗口坐标为：{self.anchor}, 窗口高度为： {self.oheight}, 窗口宽度为：{self.owidth}')
         self.recoginer = Recognizer()
         self.runtime = 0
         self.thread = 3
@@ -224,8 +228,8 @@ class eliminater:
             return 0
         
     def shift2pos(self, deltax,deltay):
-        x = self.anchor[0] + int(deltax * self.wscale)
-        y = self.anchor[1] + int(deltay * self.hscale)
+        x = self.anchor[0] + int(deltax * self.scale)
+        y = self.anchor[1] + int(deltay * self.scale)
         return (x,y)
         
     def watchAD(self):
@@ -233,18 +237,22 @@ class eliminater:
         看广告
         """
         times = int(input('看的次数：'))
-        self.activate()
         for i in range(times):
             print('开始看广告')
             pos = self.shift2pos(225,510)
+            self.activate()
             pyautogui.click(pos[0], pos[1])
             time.sleep(3)
             print('静音')
             pos = self.shift2pos(365,80)
+            self.activate()
+            pyautogui.click(pos[0], pos[1])
+            time.sleep(3)
             pyautogui.click(pos[0], pos[1])
             time.sleep(32)
             print('关闭广告')
             pos = self.shift2pos(410,80)
+            self.activate()
             pyautogui.click(pos[0], pos[1])
             time.sleep(3)
         
@@ -256,10 +264,10 @@ class eliminater:
         x1, y1 = ((x1 + x2) / 2, (y1 + y2) / 2)
         x3, y3, x4, y4 = self.digit_squares[(end_x - 1) * 10 + end_y - 1]
         x2, y2 = ((x3 + x4) / 2, (y3 + y4) / 2)
-        x1 *= self.wscale
-        x2 *= self.wscale
-        y1 *= self.hscale
-        y2 *= self.hscale
+        x1 *= self.scale
+        x2 *= self.scale
+        y1 *= self.scale
+        y2 *= self.scale
         pos = self.shift2pos(x1,y1)
         pyautogui.moveTo(pos[0], pos[1])
         pyautogui.mouseDown()
@@ -298,12 +306,12 @@ class eliminater:
             screenshot = pyautogui.screenshot(region=(self.anchor[0], self.anchor[1],
                                                       self.owidth, self.oheight))
             screen = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-            screen = cv2.resize(screen, (self.width,self.height))
+            self.screenshot = cv2.resize(screen, (self.width,self.height))
             if record:
                 cv2.imwrite(f'result_{int(time.time())}.png', screen)
             else:
-                self.screenshot = screen
-                cv2.imwrite('shot.png', self.screenshot)
+                cv2.imwrite('shot.png', screen)
+                cv2.imwrite('shot_resize.png', self.screenshot)
                 return self.screenshot
         except IndexError:
             print("窗口未找到, 请确保窗口未被遮挡")
@@ -333,6 +341,8 @@ class eliminater:
                 assert len(self.digit_squares) == 160
                 self.matrix = np.array(matrix).astype(int) 
                 assert self.matrix.shape == (16,10)
+                with open('shot.txt', 'w') as file:
+                    file.write(str(self.matrix))
                 return True
             except Exception as e:
                 print(e)
@@ -340,7 +350,6 @@ class eliminater:
                 print('\t识别错误，尝试重启')
                 self.trys += 1
                 return False
-            time.sleep(3)
         else:
             print("截图失败！")
             return False
