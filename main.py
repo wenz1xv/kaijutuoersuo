@@ -36,6 +36,7 @@ class Recognizer:
         self.thread=thread
 
     def find_all_squares(self):
+        height, width, _ = self.image.shape
         gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (9, 9), 0)
         sharpened = cv2.filter2D(blurred, -1, np.array([[0, -2, 0], [-2, 9, -2], [0, -2, 0]]))  # 强化锐化处理
@@ -96,7 +97,7 @@ class Recognizer:
                 next_v_line = merged_vertical_lines[j+1]
                 p_x1, p_y1 = get_intersection(h_line, v_line)
                 p_x2, p_y2 = get_intersection(next_h_line, next_v_line)
-                is_square = abs(abs(p_x2-p_x1) - abs(p_y2-p_y1)) <= threshold and abs(p_x2-p_x1) > 15
+                is_square = abs(abs(p_x2-p_x1) - abs(p_y2-p_y1)) <= threshold and abs(p_x2-p_x1) > 15 and (p_x2 -p_x1) < width//10
                 if is_square:
                     found_squares.append((p_x1, p_y1, p_x2, p_y2))
         return found_squares
@@ -110,6 +111,9 @@ class Recognizer:
     def get_matrix(self, image):
         self.image = image
         self.squares = self.find_all_squares() # 寻找所有方块的四角坐标 (x1, y1, x2, y2) 
+        if len(self.squares)!= 160:
+            print('find squares error!')
+            return None, self.squares
         self.crop_images = list(map(self.crop_region, self.squares)) # 根据坐标提取每个方块图片
         worker = Pool(self.thread)
         recognized_digits = worker.map(recognize_digit, self.crop_images)  # 多线程识别图片
@@ -241,6 +245,7 @@ class eliminater:
             print('\t匹配模式识别图像中，请耐心等待……')
             matrix, self.digit_squares = self.recoginer.get_matrix(screenshot)
             try:
+                assert len(self.digit_squares) == 160
                 self.matrix = np.array(matrix).astype(int) 
                 assert self.matrix.shape == (16,10)
                 return True
