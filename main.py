@@ -1,6 +1,5 @@
 # 匹配方式识别数字
 import pyautogui
-import pygetwindow as gw
 import numpy as np
 import cv2
 import pickle
@@ -87,6 +86,8 @@ class Recognizer:
         found_squares = []
         threshold = 3
         # 寻找正方形
+        print(len(merged_horizontal_lines))
+        print(len(merged_vertical_lines))
         for i, h_line in enumerate(merged_horizontal_lines):
             if i >= len(merged_horizontal_lines)-1:
                 break
@@ -97,7 +98,7 @@ class Recognizer:
                 next_v_line = merged_vertical_lines[j+1]
                 p_x1, p_y1 = get_intersection(h_line, v_line)
                 p_x2, p_y2 = get_intersection(next_h_line, next_v_line)
-                is_square = abs(abs(p_x2-p_x1) - abs(p_y2-p_y1)) <= threshold and abs(p_x2-p_x1) > 15 and (p_x2 -p_x1) < width//10
+                is_square = abs(abs(p_x2-p_x1) - abs(p_y2-p_y1)) <= threshold and abs(p_x2-p_x1) > 5 and abs(p_x2-p_x1) < width//10
                 if is_square:
                     found_squares.append((p_x1, p_y1, p_x2, p_y2))
         return found_squares
@@ -107,11 +108,20 @@ class Recognizer:
         # 通过切片提取矩形区域
         cropped_region = self.image[y1:y2, x1:x2]
         return cropped_region
+    
+    def get_squares(self):
+        squares = []
+        for i in range(16):
+            for j in range(10):
+                squares.append((20+j*42, 137+i*42, 51+j*42, 169+i*42))
+        return squares
 
     def get_matrix(self, image):
         self.image = image
-        self.squares = self.find_all_squares() # 寻找所有方块的四角坐标 (x1, y1, x2, y2) 
+        # self.squares = self.find_all_squares() # 寻找所有方块的四角坐标 (x1, y1, x2, y2) 
+        self.squares = self.get_squares()
         if len(self.squares)!= 160:
+            print(self.squares)
             print('find squares error!')
             return None, self.squares
         self.crop_images = list(map(self.crop_region, self.squares)) # 根据坐标提取每个方块图片
@@ -125,15 +135,88 @@ class Recognizer:
         return self.digits_matrix, self.squares
 
 class eliminater:
-    def __init__(self, window_title="开局托儿所"):
-        self.window = gw.getWindowsWithTitle(window_title)[0]
+    def __init__(self):
+        self.width = 450
+        self.height = 844
+        sys = input('操作系统(win/mac): ')
+        if sys=='win':
+            self.anchor, self.owidth, self.oheight = self.find_win_window()
+        elif sys=='mac':
+            self.anchor, self.owidth, self.oheight = self.find_mac_window()
+        else:
+            raise NameError('Unknow system')
+        print(f'初始化成功，窗口坐标为：{self.anchor}, 窗口高度为： {self.oheight}, 窗口宽度为：{self.owidth}')
+        self.wscale = self.owidth / self.width * 1.
+        self.hscale = self.oheight / self.height * 1.
         self.recoginer = Recognizer()
-        self.width = self.window.width
-        self.height = self.window.height
         self.s1list = []
         self.runtime = 0
         self.thread = 3
         self.thd = 80
+    
+    def find_win_window(self):
+        import pygetwindow as gw
+        window = gw.getWindowsWithTitle("开局托儿所")[0]
+        anchor = (window.left, window.top)
+        return anchor, window.width, window.height
+
+    def find_mac_window(self):
+        import Quartz
+        all_apps = Quartz.NSWorkspace.sharedWorkspace().runningApplications()
+        target_app = None
+        for app in all_apps:
+            if app.localizedName() == '小程序':
+                target_app = app
+                break
+        if not target_app:
+            print("ERROR: NO APP FOUND")
+            exit()
+        # options = Quartz.kCGWindowListOptionOnScreenOnly
+        # options = Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements
+        # options = Quartz.kCGWindowListOptionAll
+        options = Quartz.kCGWindowListExcludeDesktopElements
+        # window_list = Quartz.CGWindowListCopyWindowInfo(options, target_app.processIdentifier())
+        window_list = Quartz.CGWindowListCopyWindowInfo(options, target_app.processIdentifier())
+
+        # 通过PID查找窗口 由于微信有多个进程，需要找到PID仅重复一次的进程 即为小程序
+        all_pid = []
+        for window in window_list:
+            if window.get('kCGWindowOwnerName', '') != '微信':
+                continue
+            window_frame = window.get('kCGWindowBounds', None)
+            top = int(window_frame['Y'])
+            left = int(window_frame['X'])
+            anchor = (left, top)
+            if anchor[0] < 10 or anchor[1] <= 100:
+                continue
+            window_pid = window.get('kCGWindowOwnerPID', '')
+            all_pid.append(window_pid)
+        target_pid = None
+        # 查找PID仅重复一次的进程
+        for pid in all_pid:
+            if all_pid.count(pid) == 1:
+                target_pid = pid
+                break
+        print(target_pid)
+        if not target_pid:
+            print(all_pid)
+            print("找不到微信窗口，请确保微信已打开小程序，或将窗口往下拖一点")
+            exit()
+        for window in window_list:
+            window_pid = window.get('kCGWindowOwnerPID', '')
+            if window_pid == target_pid:  # Modify the window PID accordingly
+                window_frame = window.get('kCGWindowBounds', None)
+                if window_frame:
+                    left = int(window_frame['X'])
+                    top = int(window_frame['Y'])
+                    anchor = (left, top)
+                    if anchor[0] < 10 or anchor[1] <= 100:
+                        continue
+                    width = int(window_frame['Width'])
+                    height = int(window_frame['Height'])
+                    return anchor, width, height
+        print("找不到微信窗口，请确保微信已打开小程序")
+        exit()
 
     @property
     def score(self):
@@ -148,20 +231,22 @@ class eliminater:
         看广告
         """
         times = int(input('看的次数：'))
+        self.activate()
         for i in range(times):
             print('开始看广告')
-            x = self.window.left + self.window.width//2
-            y = self.window.top + 510
+            x = self.anchor[0] + int(225 * self.wscale)
+            y = self.anchor[1] + int(510 * self.hscale)
             pyautogui.click(x, y)
             time.sleep(3)
             print('静音')
-            x = self.window.left + 370
-            y = self.window.top + 80
-            pyautogui.click(x, y)
-            time.sleep(35)
+            for j in range(5):
+                x = self.anchor[0] + int(365 * self.wscale)
+                y = self.anchor[0] + int(80 * self.hscale)
+                pyautogui.click(x, y)
+                time.sleep(6)
             print('关闭广告')
-            x = self.window.left + 420
-            y = self.window.top + 80
+            x = self.anchor[0] + int(410 * self.wscale)
+            y = self.anchor[0] + int(80 * self.hscale)
             pyautogui.click(x, y)
             time.sleep(3)
         
@@ -173,9 +258,9 @@ class eliminater:
         x1, y1 = ((x1 + x2) / 2, (y1 + y2) / 2)
         x3, y3, x4, y4 = self.digit_squares[(end_x - 1) * 10 + end_y - 1]
         x2, y2 = ((x3 + x4) / 2, (y3 + y4) / 2)
-        pyautogui.moveTo(self.window.left + x1, self.window.top+self.height//7 + y1)
+        pyautogui.moveTo(self.anchor[0] + x1, self.anchor[1]+ y1)
         pyautogui.mouseDown()
-        pyautogui.moveTo(self.window.left + x2, self.window.top+self.height//7 + y2, duration=duration)
+        pyautogui.moveTo(self.anchor[0] + x2, self.anchor[1] + y2, duration=duration)
         pyautogui.mouseUp()
         
     def restart(self):
@@ -183,21 +268,22 @@ class eliminater:
         重启游戏
         """
         # 设置
-        x = self.window.left + 40
-        y = self.window.top + 70
+        self.activate()
+        x = self.anchor[0] + int(40 * self.wscale)
+        y = self.anchor[1] + int(70 * self.hscale)
         pyautogui.click(x, y)
         time.sleep(1)
         # 放弃
-        x = self.window.left+ (self.width // 2)
-        y = self.window.top + 500
+        x = self.anchor[0] + int(225 * self.wscale)
+        y = self.anchor[1] + int(500 * self.hscale)
         pyautogui.click(x, y)
         time.sleep(1)
         # 确定
-        y = self.window.top + 520
+        y = self.anchor[1] + int(520 * self.hscale)
         pyautogui.click(x, y)
         time.sleep(1)
         # 开始游戏
-        y = self.window.top + 780
+        y = self.anchor[1] + 780
         pyautogui.click(x, y)
         time.sleep(2)
 
@@ -206,22 +292,19 @@ class eliminater:
         窗口截图，record=True时仅保存截图，用于在游戏结束后截图记录
         """
         try:
-            try:
-                self.window.activate()
-            except:
-                pass
             time.sleep(1)
-            screenshot = pyautogui.screenshot(region=(self.window.left, self.window.top,
-                                                      self.window.width, self.window.height))
+            screenshot = pyautogui.screenshot(region=(self.anchor[0], self.anchor[1],
+                                                      self.owidth, self.oheight))
             screen = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+            screen = cv2.resize(screen, (self.width,self.height))
             if record:
                 cv2.imwrite(f'result_{int(time.time())}.png', screen)
             else:
-                self.screenshot = screen[self.height//7:-self.height//25,:,:]
+                self.screenshot = screen
                 cv2.imwrite('shot.png', self.screenshot)
                 return self.screenshot
         except IndexError:
-            print("窗口未找到")
+            print("窗口未找到, 请确保窗口未被遮挡")
             return None
         
     def record(self, x):
@@ -260,6 +343,11 @@ class eliminater:
             print("截图失败！")
             return False
         
+    def activate(self):
+        x = self.anchor[0] + int(225 * self.wscale)
+        y = self.anchor[1] + int(25 * self.hscale)
+        pyautogui.click(x, y)
+        
     def run_strategy(self, strategy, action=False):
         self.cal_matrix = self.matrix.copy()
         if strategy[0] == 1:
@@ -272,7 +360,7 @@ class eliminater:
             self.cal_all_y(action=action)
 #         return self.score
         
-    def run(self):
+    def run(self, once=False):
         """
         运行
         """
@@ -280,7 +368,8 @@ class eliminater:
         self.thd = int(input('请输入分数阈值（低于该值将自动放弃重开）：'))
         print(f"开始运行...")
         self.trys = 0
-        while True:
+        stop = False
+        while not stop:
             if self.trys > 5:
                 print('错误次数过多，终止运行')
                 break
@@ -337,13 +426,19 @@ class eliminater:
                 self.restart()
             else:
                 print('\t执行最优策略', go)
+                self.activate()
                 self.run_strategy(go, action=True)
                 self.capture_window(record=True)
-                time.sleep(100)
-                # 点击再次挑战
-                x = self.window.left + (self.width // 2)
-                y = self.window.top + 620
-                pyautogui.click(x, y)
+                if once:
+                    stop = True
+                    exit()
+                else:
+                    time.sleep(100)
+                    # 点击再次挑战
+                    self.activate()
+                    x = self.anchor[0] + int(225 * self.wscale)
+                    y = self.anchor[1] + int(620 * self.hscale)
+                    pyautogui.click(x, y)
             print(f"游戏{self.runtime}结束, 开始下一次...")
             time.sleep(1)
         
@@ -529,4 +624,13 @@ class eliminater:
                 
 if __name__ == '__main__':
     runner = eliminater()
-    runner.run()
+    func = input('选择功能：1、连续运行；2、单次运行；3、看广告：')
+    func = int(func)
+    if func == 1:
+        runner.run()
+    elif func == 2:
+        runner.run(once=True)
+    elif func == 3:
+        runner.watchAD()
+    else:
+        print('unknow choice')
