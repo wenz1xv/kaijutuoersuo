@@ -2,3 +2,4 @@ pyautogui
 pygetwindow
 opencv-python
 numpy
+

@@ -3,6 +3,7 @@ import pyautogui
 import numpy as np
 import cv2
 import pickle
+import sys
 import time
 from multiprocessing import Pool
 
@@ -138,10 +139,9 @@ class eliminater:
     def __init__(self):
         self.width = 450
         self.height = 844
-        sys = input('操作系统(win/mac): ')
-        if sys=='win':
+        if sys.platform[:3] == 'win':
             self.anchor, self.owidth, self.oheight = self.find_win_window()
-        elif sys=='mac':
+        elif sys.platform[:6] == 'darwin':
             self.anchor, self.owidth, self.oheight = self.find_mac_window()
         else:
             raise NameError('Unknow system')
@@ -149,7 +149,6 @@ class eliminater:
         self.wscale = self.owidth / self.width * 1.
         self.hscale = self.oheight / self.height * 1.
         self.recoginer = Recognizer()
-        self.s1list = []
         self.runtime = 0
         self.thread = 3
         self.thd = 80
@@ -196,10 +195,8 @@ class eliminater:
         for pid in all_pid:
             if all_pid.count(pid) == 1:
                 target_pid = pid
-                break
-        print(target_pid)
+                breakpoint
         if not target_pid:
-            print(all_pid)
             print("找不到微信窗口，请确保微信已打开小程序，或将窗口往下拖一点")
             exit()
         for window in window_list:
@@ -226,6 +223,11 @@ class eliminater:
             print('未初始化')
             return 0
         
+    def shift2pos(self, deltax,deltay):
+        x = self.anchor[0] + int(deltax * self.wscale)
+        y = self.anchor[1] + int(deltay * self.hscale)
+        return (x,y)
+        
     def watchAD(self):
         """
         看广告
@@ -234,20 +236,16 @@ class eliminater:
         self.activate()
         for i in range(times):
             print('开始看广告')
-            x = self.anchor[0] + int(225 * self.wscale)
-            y = self.anchor[1] + int(510 * self.hscale)
-            pyautogui.click(x, y)
+            pos = self.shift2pos(225,510)
+            pyautogui.click(pos[0], pos[1])
             time.sleep(3)
             print('静音')
-            for j in range(5):
-                x = self.anchor[0] + int(365 * self.wscale)
-                y = self.anchor[0] + int(80 * self.hscale)
-                pyautogui.click(x, y)
-                time.sleep(6)
+            pos = self.shift2pos(365,80)
+            pyautogui.click(pos[0], pos[1])
+            time.sleep(32)
             print('关闭广告')
-            x = self.anchor[0] + int(410 * self.wscale)
-            y = self.anchor[0] + int(80 * self.hscale)
-            pyautogui.click(x, y)
+            pos = self.shift2pos(410,80)
+            pyautogui.click(pos[0], pos[1])
             time.sleep(3)
         
     def action(self, begin_x, end_x, begin_y, end_y,duration=0.1):
@@ -258,9 +256,15 @@ class eliminater:
         x1, y1 = ((x1 + x2) / 2, (y1 + y2) / 2)
         x3, y3, x4, y4 = self.digit_squares[(end_x - 1) * 10 + end_y - 1]
         x2, y2 = ((x3 + x4) / 2, (y3 + y4) / 2)
-        pyautogui.moveTo(self.anchor[0] + x1, self.anchor[1]+ y1)
+        x1 *= self.wscale
+        x2 *= self.wscale
+        y1 *= self.hscale
+        y2 *= self.hscale
+        pos = self.shift2pos(x1,y1)
+        pyautogui.moveTo(pos[0], pos[1])
         pyautogui.mouseDown()
-        pyautogui.moveTo(self.anchor[0] + x2, self.anchor[1] + y2, duration=duration)
+        pos = self.shift2pos(x2,y2)
+        pyautogui.moveTo(pos[0], pos[1], duration=duration)
         pyautogui.mouseUp()
         
     def restart(self):
@@ -269,22 +273,20 @@ class eliminater:
         """
         # 设置
         self.activate()
-        x = self.anchor[0] + int(40 * self.wscale)
-        y = self.anchor[1] + int(70 * self.hscale)
-        pyautogui.click(x, y)
+        pos = self.shift2pos(40,70)
+        pyautogui.click(pos[0], pos[1])
         time.sleep(1)
         # 放弃
-        x = self.anchor[0] + int(225 * self.wscale)
-        y = self.anchor[1] + int(500 * self.hscale)
-        pyautogui.click(x, y)
+        pos = self.shift2pos(225,500)
+        pyautogui.click(pos[0], pos[1])
         time.sleep(1)
         # 确定
-        y = self.anchor[1] + int(520 * self.hscale)
-        pyautogui.click(x, y)
+        pos = self.shift2pos(225,520)
+        pyautogui.click(pos[0], pos[1])
         time.sleep(1)
         # 开始游戏
-        y = self.anchor[1] + 780
-        pyautogui.click(x, y)
+        pos = self.shift2pos(225,780)
+        pyautogui.click(pos[0], pos[1])
         time.sleep(2)
 
     def capture_window(self, record=False):
@@ -344,9 +346,9 @@ class eliminater:
             return False
         
     def activate(self):
-        x = self.anchor[0] + int(225 * self.wscale)
-        y = self.anchor[1] + int(25 * self.hscale)
-        pyautogui.click(x, y)
+        pos = self.shift2pos(225,25)
+        pyautogui.click(pos[0], pos[1])
+        pyautogui.click(pos[0], pos[1])
         
     def run_strategy(self, strategy, action=False):
         self.cal_matrix = self.matrix.copy()
@@ -436,9 +438,8 @@ class eliminater:
                     time.sleep(100)
                     # 点击再次挑战
                     self.activate()
-                    x = self.anchor[0] + int(225 * self.wscale)
-                    y = self.anchor[1] + int(620 * self.hscale)
-                    pyautogui.click(x, y)
+                    pos = self.shift2pos(225,620)
+                    pyautogui.click(pos[0], pos[1])
             print(f"游戏{self.runtime}结束, 开始下一次...")
             time.sleep(1)
         
@@ -491,8 +492,6 @@ class eliminater:
                 for begin_y in range(0, 10):
                     # 搜索右边
                     if self.cal_matrix[begin_x, begin_y] ==0:
-                        continue
-                    if len(self.s1list) >0 and self.cal_matrix[begin_x, begin_y] not in self.s1list:
                         continue
                     for x in range(begin_x+1, 16):
                         if self.cal_matrix[x, begin_y] ==0:
@@ -562,8 +561,6 @@ class eliminater:
                 for begin_x in range(0, 16):
                     # 搜索右边
                     if self.cal_matrix[begin_x, begin_y] ==0:
-                        continue
-                    if len(self.s1list) >0 and self.cal_matrix[begin_x, begin_y] not in self.s1list:
                         continue
                     for x in range(begin_x+1, 16):
                         if self.cal_matrix[x, begin_y] ==0:
