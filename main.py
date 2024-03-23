@@ -1,11 +1,12 @@
 # 匹配方式识别数字
 import pyautogui
 import numpy as np
+import json
 import cv2
 import pickle
 import sys
 import time
-from multiprocessing import Pool
+from collections import Counter
 
 template = pickle.load(open('template.pkl', 'rb'))
 
@@ -18,122 +19,121 @@ def recognize_digit(image):
         template_img = cv2.resize(template_img, (width, height))
         score = cv2.matchTemplate(image_[:-3,3:], template_img[:-3,3:], cv2.TM_CCOEFF)
         scores[int(number)] = score[0]
+    if np.max(scores) < 200000:
+        print('识别出错！')
     return np.argmax(scores)
 
-def get_intersection(h_line, v_line):
-    rho_h, theta_h = h_line
-    rho_v, theta_v = v_line
-    # 计算交点坐标
-    x, y = np.linalg.solve(np.array([[np.cos(theta_h), np.sin(theta_h)],
-                                    [np.cos(theta_v), np.sin(theta_v)]]).astype(float),
-                        np.array([rho_h, rho_v]).astype(float))
-    # 将交点坐标转为整数
-    x, y = int(x), int(y)
-    return x, y
-
 class Recognizer:
-    def __init__(self, thread=1):
-        self.thread=thread
-
-    def find_all_squares(self):
-        height, width, _ = self.image.shape
-        gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray, (9, 9), 0)
-        sharpened = cv2.filter2D(blurred, -1, np.array([[0, -2, 0], [-2, 9, -2], [0, -2, 0]]))  # 强化锐化处理
-        edges = cv2.Canny(sharpened, 200, 500)
+    def __init__(self):
+        try:
+            self.sqinfo = json.load(open('sqinfo.json','r'))
+            print()
+            print('从sqinfo.json加载识别模块')
+            print(f"左上角方块锚点坐标({self.sqinfo['anchor_x']},{self.sqinfo['anchor_y']})")
+            print(f"方块高度{self.sqinfo['hwidth']}, 方块高度间隔{self.sqinfo['hgap']}")
+            print(f"方块宽度{self.sqinfo['vwidth']}, 方块宽度间隔{self.sqinfo['vgap']}")
+            print()
+            return
+        except:
+            pass
+    
+    def get_sqinfo(self, image):
+        try:
+            return self.sqinfo
+        except:
+            print()
+            print('初始化识别模块，请判断定位是否准确')
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        img1 = cv2.GaussianBlur(gray,(3,3),0)
+        edges = cv2.Canny(img1, 50, 150)
         # 使用霍夫线变换检测直线
-        lines = cv2.HoughLines(edges, 1, np.pi / 180, threshold=175)
+        lines = cv2.HoughLines(edges, 1, np.pi / 180, threshold=200)
         horizontal_lines = []
         vertical_lines = []
         if lines is not None:
             for line in lines:
                 rho, theta = line[0]
+                if rho < 0 :
+                    continue
                 a = np.cos(theta)
                 b = np.sin(theta)
                 x0 = a * rho
                 y0 = b * rho
-                # 转换为图像上的坐标
-                x1 = int(x0 + 1000 * (-b))
-                y1 = int(y0 + 1000 * (a))
-                x2 = int(x0 - 1000 * (-b))
-                y2 = int(y0 - 1000 * (a))
-                # 计算直线的角度
-                angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
                 # 根据角度进行分类，阈值可以根据实际情况调整
-                if 0 <= abs(angle) <= 2 or 178 <= abs(angle) <= 175:
-                    horizontal_lines.append((rho, theta))
-                elif 88 <= abs(angle) <= 92:
-                    vertical_lines.append((rho, theta))
+                if 0 <= int(theta*180/np.pi) <= 2 or 178 <= int(theta*180/np.pi) <= 175:
+                    horizontal_lines.append(int(x0))
+                elif 88 <= int(theta*180/np.pi) <= 92:
+                    vertical_lines.append(int(y0))
         # 对横线按照从上到下的顺序排序
-        horizontal_lines.sort(key=lambda line: line[0])
-        merged_horizontal_lines = []
-        merged_vertical_lines = []
-        merge_threshold = 3
-        previous_line = None
-        for current_line in horizontal_lines:
-            if previous_line is None or current_line[0] - previous_line[0] > merge_threshold:
-                merged_horizontal_lines.append((current_line[0], current_line[1]))
-            previous_line = current_line
-        # 对竖线按照从左到右的顺序排序
-        vertical_lines.sort(key=lambda line: line[0])
-        previous_line = None
-        for current_line in vertical_lines:
-            if previous_line is not None and current_line[0] - previous_line[0] <= merge_threshold:
-                # 合并相邻的水平线
-                merged_vertical_lines[-1] = (current_line[0], current_line[1])
-            else:
-                merged_vertical_lines.append((current_line[0], current_line[1]))
-            previous_line = current_line
-        found_squares = []
-        threshold = 3
-        # 寻找正方形
-        print(len(merged_horizontal_lines))
-        print(len(merged_vertical_lines))
-        for i, h_line in enumerate(merged_horizontal_lines):
-            if i >= len(merged_horizontal_lines)-1:
+        horizontal_lines.sort()
+        vertical_lines.sort()
+        gaps = []
+        for i in range(len(horizontal_lines)-1):
+            gaps.append(horizontal_lines[i+1] - horizontal_lines[i])
+        cnt = Counter(gaps)
+        gaps = [cnt.most_common(2)[0][0], cnt.most_common(2)[1][0]]
+        hwidth = max(gaps)
+        hgap = min(gaps)
+        gaps = []
+        for i in range(len(vertical_lines)-1):
+            gaps.append(vertical_lines[i+1] - vertical_lines[i])
+        cnt = Counter(gaps)
+        gaps = [cnt.most_common(2)[0][0], cnt.most_common(2)[1][0]]
+        vwidth = max(gaps)
+        vgap = min(gaps)
+        for i in range(len(horizontal_lines)-1):
+            if horizontal_lines[i+1] - horizontal_lines[i] == hwidth:
+                anchor_x = horizontal_lines[i]
                 break
-            next_h_line = merged_horizontal_lines[i+1]
-            for j, v_line in enumerate(merged_vertical_lines):
-                if j >= len(merged_vertical_lines) - 1:
-                    break
-                next_v_line = merged_vertical_lines[j+1]
-                p_x1, p_y1 = get_intersection(h_line, v_line)
-                p_x2, p_y2 = get_intersection(next_h_line, next_v_line)
-                is_square = abs(abs(p_x2-p_x1) - abs(p_y2-p_y1)) <= threshold and abs(p_x2-p_x1) > 5 and abs(p_x2-p_x1) < width//10
-                if is_square:
-                    found_squares.append((p_x1, p_y1, p_x2, p_y2))
-        return found_squares
+        for i in range(len(vertical_lines)-1):
+            if vertical_lines[i+1] - vertical_lines[i] == vwidth:
+                anchor_y = vertical_lines[i]
+                break
+        self.sqinfo = {
+            'anchor_x':anchor_x,
+            'anchor_y':anchor_y,
+            'hwidth':hwidth,
+            'vwidth':vwidth,
+            'hgap':hgap,
+            'vgap':vgap,
+            'h':hgap+hwidth,
+            'v':vgap+vwidth
+        }
+        print(f'左上角方块锚点坐标({anchor_x},{anchor_y})，参考值（20,137）')
+        print(f'方块高度{hwidth}, 方块高度间隔{hgap}')
+        print(f'方块宽度{vwidth}, 方块宽度间隔{vgap}')
+        print('识别信息保存到sqinfo.json')
+        print()
+        json.dump(self.sqinfo, open('sqinfo.json','w'), indent=2)
+        return self.sqinfo
 
     def crop_region(self, square):
         (x1, y1, x2, y2) = square
         # 通过切片提取矩形区域
         cropped_region = self.image[y1:y2, x1:x2]
         return cropped_region
-    
-    def get_squares(self):
-        squares = []
-        for i in range(16):
-            for j in range(10):
-                squares.append((20+j*42, 137+i*42, 51+j*42, 169+i*42))
-        return squares
 
     def get_matrix(self, image):
         self.image = image
+        sqinfo = self.get_sqinfo(image)
         # self.squares = self.find_all_squares() # 寻找所有方块的四角坐标 (x1, y1, x2, y2) 
-        self.squares = self.get_squares()
-        if len(self.squares)!= 160:
-            print(self.squares)
+        squares = []
+        for i in range(16):
+            for j in range(10):
+                squares.append((sqinfo['anchor_x']+j*sqinfo['h'],
+                                sqinfo['anchor_y']+i*sqinfo['v'],
+                                sqinfo['anchor_x']+sqinfo['hwidth']+j*sqinfo['h'],
+                                sqinfo['anchor_y']+sqinfo['vwidth']+i*sqinfo['v']))
+        if len(squares)!= 160:
+            print(squares)
             print('find squares error!')
-            return None, self.squares
-        self.crop_images = list(map(self.crop_region, self.squares)) # 根据坐标提取每个方块图片
-        worker = Pool(self.thread)
-        recognized_digits = worker.map(recognize_digit, self.crop_images)  # 多线程识别图片
-        worker.close()
-        worker.join()
+            return None, squares
+        self.crop_images = list(map(self.crop_region, squares)) # 根据坐标提取每个方块图片
+        recognized_digits = list(map(recognize_digit, self.crop_images))  # 多线程识别图片
         self.digits_matrix = []
         for i in range(16):
             self.digits_matrix.append((recognized_digits[i * 10:i * 10 + 10]))
-        return self.digits_matrix, self.squares
+        return self.digits_matrix, squares
 
 class eliminater:
     def __init__(self):
@@ -154,8 +154,8 @@ class eliminater:
             print(f'重新调整窗口坐标为：{self.anchor}, 窗口高度为： {self.oheight}, 窗口宽度为：{self.owidth}')
         self.recoginer = Recognizer()
         self.runtime = 0
-        self.thread = 3
         self.thd = 80
+        self.terminate = False
     
     def find_win_window(self):
         import pygetwindow as gw
@@ -268,6 +268,13 @@ class eliminater:
         x2 *= self.scale
         y1 *= self.scale
         y2 *= self.scale
+        mouse = pyautogui.position()
+        if self.terminate:
+            return
+        if mouse[0] < self.anchor[0] or mouse[1] < self.anchor[1]:
+            print('移出游戏范围，终止运行')
+            self.terminate = True
+            return
         pos = self.shift2pos(x1,y1)
         pyautogui.moveTo(pos[0], pos[1])
         pyautogui.mouseDown()
@@ -375,7 +382,6 @@ class eliminater:
         """
         运行
         """
-        self.thread = int(input('OCR线程数（推荐3）：'))
         self.thd = int(input('请输入分数阈值（低于该值将自动放弃重开）：'))
         print(f"开始运行...")
         self.trys = 0
@@ -453,7 +459,7 @@ class eliminater:
             time.sleep(1)
         
     def cal_all_x(self, End=False, action=False):
-        if End:
+        if End or self.terminate:
 #             if not action:
 #                 print(f'\t\t求解任意和后分数：{self.score}')
             return
@@ -472,7 +478,7 @@ class eliminater:
             self.cal_all_x(End=End, action=action)
             
     def cal_all_y(self, End=False, action=False):
-        if End:
+        if End or self.terminate:
 #             if not action:
 #                 print(f'\t\t求解任意和后分数：{self.score}')
             return
@@ -491,7 +497,7 @@ class eliminater:
             self.cal_all_y(End=End, action=action)
     
     def cal_two_x(self, End=False, action=False):
-        if End:
+        if End or self.terminate:
 #             if not action:
 #                 print(f'\t\t求解两数和后分数：{self.score}')
             return
@@ -560,7 +566,7 @@ class eliminater:
             self.cal_two_x(End=End, action=action)
             
     def cal_two_y(self, End=False, action=False):
-        if End:
+        if End or self.terminate:
 #             if not action:
 #                 print(f'\t\t求解两数和后分数：{self.score}')
             return
@@ -630,13 +636,11 @@ class eliminater:
                 
 if __name__ == '__main__':
     runner = eliminater()
-    func = input('选择功能：1、连续运行；2、单次运行；3、看广告：')
+    func = input('选择功能：1、运行(请确保已经正在游戏)；2、看广告：')
     func = int(func)
     if func == 1:
-        runner.run()
-    elif func == 2:
         runner.run(once=True)
-    elif func == 3:
+    elif func == 2:
         runner.watchAD()
     else:
         print('unknow choice')
