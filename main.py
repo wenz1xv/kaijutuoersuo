@@ -13,12 +13,10 @@ template = pickle.load(open('template.pkl', 'rb'))
 def recognize_digit(image):
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     _, image_ = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY)
-    height, width = image_.shape
     scores = np.zeros(10)
     for number, template_img in template.items():
-        template_img = cv2.resize(template_img, (width, height))
-        score = cv2.matchTemplate(image_[:-3,3:], template_img[:-3,3:], cv2.TM_CCOEFF)
-        scores[int(number)] = score[0]
+        score = cv2.matchTemplate(image_, template_img, cv2.TM_CCOEFF)
+        scores[int(number)] = np.max(score)
     if np.max(scores) < 200000:
         print('识别出错！')
     return np.argmax(scores)

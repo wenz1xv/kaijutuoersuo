@@ -12,21 +12,42 @@ def crop_region(image, square):
     cropped_region = image[y1:y2, x1:x2]
     return cropped_region
 
+def shiftimg(image_):
+    rows, cols = image_.shape
+    if image_[2,2]==255:
+        dx = -2
+        dy = -2
+    elif image_[-2,-2] ==255:
+        dx = 2
+        dy = 2
+    elif image_[2,-2] ==255:
+        dx = 2
+        dy = -2
+    elif image_[-2,2] ==255:
+        dx = -2
+        dy = 2
+    else:
+        print('no shift')
+        return image_
+    MAT = np.float32([[1, 0, dx], [0, 1, dy]])  # 构造平移变换矩阵   
+    # dst = cv2.warpAffine(img, MAT, (cols, rows))  # 默认为黑色填充
+    dst = cv2.warpAffine(image_, MAT, (cols, rows), borderValue=(255,255,255))  # 设置白色填充
+    return dst
+
 def recognize_digit(image):
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     _, image_ = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY)
     height, width = image_.shape
     scores = np.zeros(10)
     for number, template_img in template.items():
-        template_img = cv2.resize(template_img, (width, height))
-        score = cv2.matchTemplate(image_[:-3,3:], template_img[:-3,3:], cv2.TM_CCOEFF)
-        scores[int(number)] = score[0]
+        score = cv2.matchTemplate(image_, template_img, cv2.TM_CCOEFF)
+        scores[int(number)] = np.max(score)
     if np.max(scores) < 200000:
         print('识别出错！')
     return np.argmax(scores)
 
 
-img = cv2.imread("shot.png")
+img = cv2.imread("shot1.png")
 original_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 # canny(): 边缘检测
@@ -72,7 +93,7 @@ vgap = min(gaps)
 
 for i in range(len(horizontal_lines)-1):
     if horizontal_lines[i+1] - horizontal_lines[i] == hwidth:
-        print(horizontal_lines[i+1])
+        # print(horizontal_lines[i+1])
         anchor_x = horizontal_lines[i]
         break
 
@@ -83,12 +104,25 @@ for i in range(len(vertical_lines)-1):
         break
 print(f'左上角坐标{anchor_x},{anchor_y}, 方块宽度{vwidth}, 方块间隔{vgap}')
 
+anchor_y = 137
+
 squares = []
 for i in range(16):
     for j in range(10):
-        squares.append((anchor_x+j*(hwidth+hgap), anchor_y+i*(vwidth+vgap), anchor_x+hwidth+j*(hwidth+hgap), anchor_y+vwidth+i*(vwidth+vgap)))
+        delta = 2
+        squares.append((anchor_x+j*(hwidth+hgap)-delta, anchor_y+i*(vwidth+vgap)-delta, anchor_x+hwidth+j*(hwidth+hgap)+delta, anchor_y+vwidth+i*(vwidth+vgap)+delta))
+        # image = crop_region(img, squares[-1])
+        # gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # _, image_ = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY)
+        # # cv2.imwrite(f'tmp/{i}_{j}_.jpg', image_)
+        # image_ = shiftimg(image_)
+        # cv2.imwrite(f'tmp/{i}_{j}.jpg', image_)
 
-for i in squares:
-    crop_images = crop_region(img, i)
-    recognized_digits = recognize_digit(crop_images)
-    print(recognized_digits)
+recognized_digits = [recognize_digit(crop_region(img, i)) for i in squares]
+
+print(np.array(recognized_digits).reshape((16,10)))
+
+# for i in squares:
+#     crop_images = crop_region(img, i)
+#     recognized_digits = recognize_digit(crop_images)
+#     print(recognized_digits)
