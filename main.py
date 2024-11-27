@@ -262,10 +262,10 @@ class eliminater:
         x1, y1 = ((x1 + x2) / 2, (y1 + y2) / 2)
         x3, y3, x4, y4 = self.digit_squares[(end_x - 1) * 10 + end_y - 1]
         x2, y2 = ((x3 + x4) / 2, (y3 + y4) / 2)
-        x1 *= self.scale
-        x2 *= self.scale
-        y1 *= self.scale
-        y2 *= self.scale
+        # x1 *= self.scale
+        # x2 *= self.scale
+        # y1 *= self.scale
+        # y2 *= self.scale
         mouse = pyautogui.position()
         if self.terminate:
             return
