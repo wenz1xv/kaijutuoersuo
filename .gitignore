@@ -1,0 +1,11 @@
+# 忽略 result_*.png 文件
+result_*.png
+
+# 忽略历史分数.txt 文件
+历史分数.txt
+
+# 忽略 Python 缓存文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
