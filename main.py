@@ -626,7 +626,7 @@ class eliminater:
         self.activate() # activate will perform its own checks
         if self.terminate: return
 
-        pos = self.shift2pos(40,70)
+        pos = self.shift2pos(40,75)
         if self._check_user_mouse_interrupt(): return
         pyautogui.click(pos[0], pos[1])
         if self.action_mode_active: self.last_mouse_position_set_by_script = pyautogui.position()
