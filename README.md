@@ -6,10 +6,12 @@
 > 在1080p mac与windows上测试通过，其他分辨率有待测试
 
 ## 使用说明
+* 可选
+0. 安装miniconda，以[Miniconda Windows](https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe)为例，按照引导安装
 
-1、安装python后，pip install -r requirements.txt
+1、安装python后，**进入目录**后，pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple
 
-2、PC端使用微信打开“开局托儿所”小程序，在游戏界面内点击“开始挑战”后，等页面稳定倒计时后，运行 python main.py
+2、使用电脑微信打开“开局托儿所”小程序，在游戏界面内点击“开始挑战”后，等页面稳定倒计时后，运行 python main.py，按照提示运行
 
 
 *破纪录后需要领取东西，可能导致软件退出
