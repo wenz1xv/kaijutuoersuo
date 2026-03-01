@@ -7,13 +7,21 @@
 
 ## 使用说明
 * 可选
-0. 安装miniconda，以[Miniconda Windows](https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe)为例，按照引导安装
+0. 安装miniconda，以[Miniconda Windows](https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe)为例，按照引导安装。安装python后，**进入目录**后，pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple
 
-1、安装python后，**进入目录**后，pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple
+1. **启动游戏**：使用电脑版微信打开“开局托儿所”小程序，点击“开始挑战”。
+2. **运行脚本**：在倒计时开始后，在终端执行：
+```bash
+python main.py
+```
 
-2、使用电脑微信打开“开局托儿所”小程序，在游戏界面内点击“开始挑战”后，等页面稳定倒计时后，运行 python main.py，按照提示运行
+3. **定位校准 (仅首次，窗口变动可以删除sqinfo.json文件重置)**：
+* 程序会弹出校准窗口。
+* **红线/黄线**：拖动以对齐游戏方块的最外层和内层边界。
+* **蓝色星星 (★)**：拖动到游戏左上角的【设置】按钮中心。
+* 点击 **Confirm** 确认，坐标将自动保存至 `sqinfo.json`。
 
-
+4. **设定阈值**：按照提示输入你期望的最低分数（如 `80`）。若算法预测得分低于此值，将自动重开。
 *破纪录后需要领取东西，可能导致软件退出
 
 ## 游戏分析
