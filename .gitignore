@@ -1,8 +1,15 @@
 # 忽略 result_*.png 文件
 result_*.png
 
+# 忽略运行截图/识别缓存
+shot.png
+shot_resize.png
+shot.txt
+sqinfo.json
+
 # 忽略历史分数.txt 文件
 历史分数.txt
+历史数组.jsonl
 
 # 忽略 Python 缓存文件
 __pycache__/

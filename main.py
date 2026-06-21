@@ -6,6 +6,8 @@ import cv2
 import pickle
 import sys
 import time
+import math
+import random
 from collections import Counter
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
@@ -57,7 +59,6 @@ class Recognizer:
     
     def get_sqinfo(self, image):
         if self.sqinfo is not None: # Check if loaded from file
-            print("使用已加载/已校验的定位参数。")
             required_keys = ['anchor_x', 'anchor_y', 'hwidth', 'vwidth', 'hgap', 'vgap', 'settings_x', 'settings_y']
             valid_load = True
             if not all(key in self.sqinfo for key in required_keys):
@@ -122,6 +123,7 @@ class Recognizer:
                 
                 self.active_line = None
                 self.results = None
+                self.confirmed = False
                 
                 self.update_grid()
                 
@@ -129,10 +131,11 @@ class Recognizer:
                 self.fig.canvas.mpl_connect('button_press_event', self.on_press)
                 self.fig.canvas.mpl_connect('button_release_event', self.on_release)
                 self.fig.canvas.mpl_connect('motion_notify_event', self.on_motion)
+                self.fig.canvas.mpl_connect('key_press_event', self.on_key_press)
                 
                 # 添加确认按钮
                 ax_btn = plt.axes([0.8, 0.01, 0.15, 0.05])
-                self.btn = Button(ax_btn, '确认 (Confirm)')
+                self.btn = Button(ax_btn, '确认 (Enter)')
                 self.btn.on_clicked(self.on_confirm)
 
             def update_grid(self):
@@ -203,29 +206,56 @@ class Recognizer:
             def on_release(self, event):
                 self.active_line = None
 
+            def on_key_press(self, event):
+                if event.key in ('enter', 'return'):
+                    self.on_confirm(event)
+
+            def close_window(self):
+                print("确认完成，正在关闭校准窗口...")
+                manager = getattr(self.fig.canvas, 'manager', None)
+                try:
+                    self.fig.canvas.stop_event_loop()
+                except Exception:
+                    pass
+                try:
+                    plt.close(self.fig)
+                except Exception:
+                    pass
+                try:
+                    if manager is not None and hasattr(manager, 'destroy'):
+                        manager.destroy()
+                except Exception:
+                    pass
+
             def on_confirm(self, event):
-                x1, x2, x3, x4 = sorted([self.lines[k].get_xdata()[0] for k in ['x1', 'x2', 'x3', 'x4']])
-                y1, y2, y3, y4 = sorted([self.lines[k].get_ydata()[0] for k in ['y1', 'y2', 'y3', 'y4']])
-                
-                hwidth = ((x2 - x1) + (x4 - x3)) / 2.0
-                vwidth = ((y2 - y1) + (y4 - y3)) / 2.0
-                hgap = (x4 - x1 - 10 * hwidth) / 9.0
-                vgap = (y4 - y1 - 16 * vwidth) / 15.0
-                
-                # 改为使用 float 浮点数保存，避免因为四舍五入产生向后递增的累计坐标偏移误差
-                self.results = {
-                    'anchor_x': float(x1),
-                    'anchor_y': float(y1),
-                    'hwidth': float(hwidth),
-                    'vwidth': float(vwidth),
-                    'hgap': float(hgap),
-                    'vgap': float(vgap),
-                    'h': float(hwidth + hgap),
-                    'v': float(vwidth + vgap),
-                    'settings_x': float(self.settings_marker.get_xdata()[0]),
-                    'settings_y': float(self.settings_marker.get_ydata()[0])
-                }
-                plt.close(self.fig)
+                if self.confirmed:
+                    return
+                try:
+                    x1, x2, x3, x4 = sorted([self.lines[k].get_xdata()[0] for k in ['x1', 'x2', 'x3', 'x4']])
+                    y1, y2, y3, y4 = sorted([self.lines[k].get_ydata()[0] for k in ['y1', 'y2', 'y3', 'y4']])
+                    
+                    hwidth = ((x2 - x1) + (x4 - x3)) / 2.0
+                    vwidth = ((y2 - y1) + (y4 - y3)) / 2.0
+                    hgap = (x4 - x1 - 10 * hwidth) / 9.0
+                    vgap = (y4 - y1 - 16 * vwidth) / 15.0
+                    
+                    # 改为使用 float 浮点数保存，避免因为四舍五入产生向后递增的累计坐标偏移误差
+                    self.results = {
+                        'anchor_x': float(x1),
+                        'anchor_y': float(y1),
+                        'hwidth': float(hwidth),
+                        'vwidth': float(vwidth),
+                        'hgap': float(hgap),
+                        'vgap': float(vgap),
+                        'h': float(hwidth + hgap),
+                        'v': float(vwidth + vgap),
+                        'settings_x': float(self.settings_marker.get_xdata()[0]),
+                        'settings_y': float(self.settings_marker.get_ydata()[0])
+                    }
+                    self.confirmed = True
+                    self.close_window()
+                except Exception as e:
+                    print(f"确认定位参数失败: {e}")
 
         calibrator = InteractiveGridCalibration(image)
         plt.show() # 此处会阻塞代码，直到点击按钮窗口关闭
@@ -321,52 +351,51 @@ class eliminater:
 
     def find_mac_window(self):
         import Quartz
-        all_apps = Quartz.NSWorkspace.sharedWorkspace().runningApplications()
-        target_app = None
-        for app in all_apps:
-            if app.localizedName() == '小程序':
-                target_app = app
-                break
-        if not target_app:
-            print("ERROR: NO APP FOUND")
-            exit()
-        options = Quartz.kCGWindowListExcludeDesktopElements
-        window_list = Quartz.CGWindowListCopyWindowInfo(options, target_app.processIdentifier())
+        options = Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements
+        window_list = Quartz.CGWindowListCopyWindowInfo(options, Quartz.kCGNullWindowID)
 
-        all_pid = []
+        expected_ratio = self.width / float(self.height)
+        candidates = []
+
         for window in window_list:
-            if window.get('kCGWindowOwnerName', '') != '微信':
+            owner = window.get('kCGWindowOwnerName', '') or ''
+            title = window.get('kCGWindowName', '') or ''
+            if not any(keyword in owner or keyword in title for keyword in ['微信', 'WeChat', '小程序', '开局']):
                 continue
+            if int(window.get('kCGWindowLayer', 0)) != 0:
+                continue
+
             window_frame = window.get('kCGWindowBounds', None)
-            top = int(window_frame['Y'])
-            left = int(window_frame['X'])
-            anchor = (left, top)
-            if anchor[0] < 10 or anchor[1] <= 100:
+            if not window_frame:
                 continue
-            window_pid = window.get('kCGWindowOwnerPID', '')
-            all_pid.append(window_pid)
-        target_pid = None
-        for pid in all_pid:
-            if all_pid.count(pid) == 1:
-                target_pid = pid
-                break
-        if not target_pid:
-            print("找不到微信窗口，请确保微信已打开小程序，或将窗口往下拖一点")
-            exit()
-        for window in window_list:
-            window_pid = window.get('kCGWindowOwnerPID', '')
-            if window_pid == target_pid:  
-                window_frame = window.get('kCGWindowBounds', None)
-                if window_frame:
-                    left = int(window_frame['X'])
-                    top = int(window_frame['Y'])
-                    anchor = (left, top)
-                    if anchor[0] < 10 or anchor[1] <= 100:
-                        continue
-                    width = int(window_frame['Width'])
-                    height = int(window_frame['Height'])
-                    return anchor, width, height
-        print("找不到微信窗口，请确保微信已打开小程序")
+
+            left = int(window_frame.get('X', 0))
+            top = int(window_frame.get('Y', 0))
+            width = int(window_frame.get('Width', 0))
+            height = int(window_frame.get('Height', 0))
+
+            # 小程序游戏窗口是竖屏，近似 450x844。主微信聊天窗口通常更宽，
+            # 顶部浮条/阴影窗口 layer 或尺寸也不符合这里的条件。
+            if width < 250 or height < 400 or width >= height:
+                continue
+            if left < 0 or top < 0:
+                continue
+
+            ratio = width / float(height)
+            ratio_score = abs(ratio - expected_ratio)
+            title_bonus = 0 if any(keyword in title for keyword in ['开局', '托儿所', '小程序']) else 0.05
+            size_bonus = abs(height - self.height) / 10000.0
+            score = ratio_score + title_bonus + size_bonus
+            candidates.append((score, (left, top), width, height, owner, title))
+
+        if candidates:
+            candidates.sort(key=lambda item: item[0])
+            _, anchor, width, height, owner, title = candidates[0]
+            safe_title = title if any(keyword in title for keyword in ['开局', '托儿所', '小程序']) else ''
+            print(f"找到小程序窗口: owner={owner}, title={safe_title}, 坐标={anchor}, 宽高={width}x{height}")
+            return anchor, width, height
+
+        print("找不到微信小程序窗口：请确认小程序窗口在屏幕上可见，且不是最小化/被完全遮挡。")
         exit()
 
     @property
@@ -513,19 +542,38 @@ class eliminater:
             print("窗口未找到, 请确保窗口未被遮挡")
             return None
         
-    def record(self, x):
+    def record(self, x=None):
         with open('历史分数.txt', 'a') as file:
-            if x[1]==0:
+            if x is None:
+                file.write(f'\t分数: {self.score},')
+            elif x[1]==0:
                 file.write(f'\n')
             else:
                 file.write(f'\t策略{x[0]}{x[1]}: {self.score},')
+
+    def record_matrix_history(self, predicted_score):
+        """追加保存每局初始数组和搜索结果，方便后续复盘/改进算法。"""
+        entry = {
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'runtime': int(self.runtime),
+            'threshold': int(self.thd),
+            'predicted_score': int(predicted_score),
+            'accepted': bool(predicted_score >= self.thd),
+            'matrix': self.matrix.astype(int).tolist(),
+        }
+
+        cache = getattr(self, '_rollout_cache', None)
+        if cache is not None and cache.get('key') == self.matrix.tobytes():
+            entry['search_score'] = int(cache.get('score', predicted_score))
+            entry['moves'] = [list(map(int, move)) for move in cache.get('moves', [])]
+
+        with open('历史数组.jsonl', 'a', encoding='utf-8') as file:
+            file.write(json.dumps(entry, ensure_ascii=False) + '\n')
                 
     def init_game(self):
         time.sleep(1)
-        print('\t截图中……')
         screenshot = self.capture_window()
         if screenshot is not None:
-            print('\t匹配模式识别图像中，请耐心等待……')
             try:
                 matrix_data, digit_squares_data = self.recoginer.get_matrix(screenshot)
 
@@ -575,7 +623,7 @@ class eliminater:
         pyautogui.click(pos[0], pos[1]) 
         if self.action_mode_active: self.last_mouse_position_set_by_script = pyautogui.position()
         
-    def run_strategy(self, strategy, action=False):
+    def run_strategy(self, action=False):
         original_action_mode = self.action_mode_active
         original_last_mouse_pos = self.last_mouse_position_set_by_script
 
@@ -593,31 +641,7 @@ class eliminater:
                 self.action_mode_active = original_action_mode
                 self.last_mouse_position_set_by_script = original_last_mouse_pos
             return
-
-        if strategy[0] == 1: 
-            self.cal_two_x(action=action)
-            if strategy[1] == 1:
-                self.cal_all_x(action=action)
-            elif strategy[1] == 2:
-                self.cal_all_y(action=action)
-        elif strategy[0] == 2: 
-            self.cal_two_y(action=action)
-            if strategy[1] == 1:
-                self.cal_all_x(action=action)
-            elif strategy[1] == 2:
-                self.cal_all_y(action=action)
-        elif strategy[0] == 0: 
-            if strategy[1] == 1:
-                self.cal_all_x(action=action)
-            elif strategy[1] == 2:
-                self.cal_all_y(action=action)
-        elif strategy[0] == 3: 
-            if strategy[1] == 1: 
-                self.cal_all_x(action=action)
-                self.cal_two_x(action=action)
-        elif strategy[0] == 4: # 高效策略：贪心面积消除
-            if strategy[1] == 1: 
-                self.cal_smart(action=action)
+        self.cal_rollout_search(action=action)
         
     def run(self, once=False):
         self.thd = int(input('请输入分数阈值（低于该值将自动放弃重开）：'))
@@ -632,55 +656,13 @@ class eliminater:
                 self.restart()
                 continue
             self.runtime += 1
-            print('\t识别完毕，执行策略……')
-            go = [0,1]
-            self.run_strategy([0,1])
+            print('\t识别完毕，正在计算策略，请稍候...')
+            self.run_strategy()
             if self.terminate: return
-            self.record([0,1])
+            self.record()
             maxscore = self.score
-            print(f'\t策略1分数:{self.score}')
-
-            self.run_strategy([0,2])
-            if self.terminate: return
-            self.record([0,2])
-            if self.score > maxscore: maxscore = self.score; go = [0,2]
-            print(f'\t策略2分数:{self.score}')
-
-            self.run_strategy([1,1])
-            if self.terminate: return
-            self.record([1,1])
-            if self.score > maxscore: maxscore = self.score; go = [1,1]
-            print(f'\t策略3分数:{self.score}')
-
-            self.run_strategy([1,2])
-            if self.terminate: return
-            self.record([1,2])
-            if self.score > maxscore: maxscore = self.score; go = [1,2]
-            print(f'\t策略4分数:{self.score}')
-
-            self.run_strategy([2,1])
-            if self.terminate: return
-            self.record([2,1])
-            if self.score > maxscore: maxscore = self.score; go = [2,1]
-            print(f'\t策略5分数:{self.score}')
-
-            self.run_strategy([2,2])
-            if self.terminate: return
-            self.record([2,2])
-            if self.score > maxscore: maxscore = self.score; go = [2,2]
-            print(f'\t策略6分数:{self.score}')
-
-            self.run_strategy([3,1]) 
-            if self.terminate: return
-            self.record([3,1])
-            if self.score > maxscore: maxscore = self.score; go = [3,1]
-            print(f'\t策略7分数:{self.score}')
-            
-            self.run_strategy([4,1]) 
-            if self.terminate: return
-            self.record([4,1])
-            if self.score > maxscore: maxscore = self.score; go = [4,1]
-            print(f'\t策略8(高效综合)分数:{self.score}')
+            print(f'\t预测分数:{self.score}')
+            self.record_matrix_history(maxscore)
             
             self.record([0,0])
             self.trys = 0 
@@ -700,14 +682,14 @@ class eliminater:
                 if self.terminate: 
                     print("重启操作被用户中止。")
             else:
-                print('\t执行最优策略', go)
+                print('\t执行计算出的操作序列')
                 self.activate() 
                 if self.terminate:
                     print("激活操作被用户中止。")
                 else:
-                    self.run_strategy(go, action=True) 
+                    self.run_strategy(action=True) 
                     if self.terminate:
-                        print("最优策略执行被用户中止。")
+                        print("操作序列执行被用户中止。")
                     else:
                         self.capture_window(record=True)
                 
@@ -849,6 +831,254 @@ class eliminater:
 
         if executed_any:
             self.cal_smart(End=False, action=action)
+
+    def _prefix_sum(self, matrix):
+        """构造带 0 边界的二维前缀和，用于快速计算任意矩形的数字和/非零数量。"""
+        rows, cols = matrix.shape
+        prefix = np.zeros((rows + 1, cols + 1), dtype=int)
+        prefix[1:, 1:] = matrix.cumsum(axis=0).cumsum(axis=1)
+        return prefix
+
+    def _rect_sum(self, prefix, bx, ex, by, ey):
+        """读取 [bx:ex, by:ey) 矩形区域的前缀和。"""
+        return int(prefix[ex, ey] - prefix[bx, ey] - prefix[ex, by] + prefix[bx, by])
+
+    def _candidate_moves(self, matrix):
+        """枚举当前局面所有合法矩形，并附带排序所需的轻量特征。"""
+        rows, cols = matrix.shape
+        sum_prefix = self._prefix_sum(matrix)
+        count_prefix = self._prefix_sum((matrix != 0).astype(int))
+        moves = []
+
+        for bx in range(rows):
+            for ex in range(bx + 1, rows + 1):
+                for by in range(cols):
+                    for ey in range(by + 1, cols + 1):
+                        if self._rect_sum(sum_prefix, bx, ex, by, ey) != 10:
+                            continue
+
+                        nonzero_count = self._rect_sum(count_prefix, bx, ex, by, ey)
+                        if nonzero_count == 0:
+                            continue
+
+                        block = matrix[bx:ex, by:ey]
+                        nonzero_digits = block[block != 0]
+                        height = ex - bx
+                        width = ey - by
+                        area = height * width
+                        max_digit = int(np.max(nonzero_digits))
+                        min_digit = int(np.min(nonzero_digits))
+                        # move = (非零格数, 面积, 高, 宽, 上, 下, 左, 右, 最大数字, 最小数字)
+                        moves.append((nonzero_count, area, height, width, bx, ex, by, ey, max_digit, min_digit))
+
+        return moves
+
+    def _simulate_policy(self, base_matrix, key_func):
+        """按一个排序策略模拟到无可消除，返回分数、终局和动作序列。"""
+        matrix = base_matrix.copy()
+        moves_done = []
+
+        while True:
+            moves = self._candidate_moves(matrix)
+            if not moves:
+                break
+
+            moves.sort(key=key_func)
+            executed_any = False
+            for move in moves:
+                bx, ex, by, ey = move[4], move[5], move[6], move[7]
+                # 批量模拟时，前面的动作可能已经改变局面，所以执行前必须二次校验。
+                if np.sum(matrix[bx:ex, by:ey]) == 10:
+                    matrix[bx:ex, by:ey] = 0
+                    moves_done.append((bx, ex, by, ey))
+                    executed_any = True
+
+            if not executed_any:
+                break
+
+        score = matrix.size - int(np.sum(matrix.astype(bool)))
+        return score, matrix, moves_done
+
+    def _matrix_seed(self, matrix):
+        """从矩阵内容生成稳定随机种子，使同一局面的搜索可复现。"""
+        weights = np.arange(1, matrix.size + 1, dtype=np.int64).reshape(matrix.shape)
+        return int(np.sum(matrix.astype(np.int64) * weights) % (2 ** 32 - 1))
+
+    def _score_matrix(self, matrix):
+        return matrix.size - int(np.sum(matrix.astype(bool)))
+
+    def _policy_seeds(self, start_matrix):
+        """给动作级搜索提供几条确定性基线，后续 rollout 会在单步动作层面继续探索。"""
+        policies = [
+            ('few_digits', lambda m: (m[0], m[1], m[4], m[6], m[5], m[7])),
+            ('compact_area', lambda m: (m[1], m[0], m[4], m[6], m[5], m[7])),
+            ('row_shape_first', lambda m: (m[0], m[2], m[3], m[1], m[4], m[6], m[5], m[7])),
+            ('col_shape_first', lambda m: (m[0], m[3], m[2], m[1], m[6], m[4], m[7], m[5])),
+        ]
+        results = []
+        for policy_name, key_func in policies:
+            score, final_matrix, moves_done = self._simulate_policy(start_matrix, key_func)
+            results.append((score, final_matrix, moves_done, policy_name))
+        return results
+
+    def _weighted_choice(self, pool, rng, temperature=1.0):
+        """从已排序候选中按指数衰减采样，既偏向前排动作，也保留探索。"""
+        weights = [math.exp(-i / (2.7 * temperature)) for i in range(len(pool))]
+        total = sum(weights)
+        target = rng.random() * total
+        acc = 0.0
+        for move, weight in zip(pool, weights):
+            acc += weight
+            if acc >= target:
+                return move
+        return pool[-1]
+
+    def _stochastic_rollout(self, base_matrix, seed, topk=32, late_topk=160, temperature=1.0,
+                            noise=2.2, late_threshold=70, high_digit_weight=0.25):
+        """单次动作级 rollout：每次只执行一个矩形动作，直到无路可走。"""
+        rng = random.Random(seed)
+        matrix = base_matrix.copy()
+        moves_done = []
+
+        while True:
+            moves = self._candidate_moves(matrix)
+            if not moves:
+                break
+
+            remaining = int(np.count_nonzero(matrix))
+
+            def noisy_key(move):
+                nonzero_count, area, height, width, bx, ex, by, ey, max_digit, min_digit = move
+                is_late_game = remaining < late_threshold
+                return (
+                    nonzero_count * 2.3
+                    + area * (0.12 if is_late_game else 0.18)
+                    + (height + width) * 0.06
+                    - max_digit * high_digit_weight
+                    + rng.random() * (noise if is_late_game else noise * 0.6)
+                )
+
+            moves.sort(key=noisy_key)
+            limit = late_topk if remaining < late_threshold else topk
+            k = min(len(moves), limit)
+
+            # 后盘偶尔扩大候选池，专门避免贪心尾局被单一局部最优锁死。
+            if rng.random() < 0.12 and len(moves) > k:
+                pool = moves[:min(len(moves), k * 2)]
+            else:
+                pool = moves[:k]
+
+            move = self._weighted_choice(pool, rng, temperature=temperature)
+            bx, ex, by, ey = move[4], move[5], move[6], move[7]
+            if np.sum(matrix[bx:ex, by:ey]) == 10:
+                matrix[bx:ex, by:ey] = 0
+                moves_done.append((bx, ex, by, ey))
+
+        return self._score_matrix(matrix), matrix, moves_done
+
+    def _replay_move_sequence(self, start_matrix, moves, action=False):
+        self.cal_matrix = start_matrix.copy()
+        for bx, ex, by, ey in moves:
+            if self.terminate:
+                break
+            if np.sum(self.cal_matrix[bx:ex, by:ey]) == 10:
+                self.cal_matrix[bx:ex, by:ey] = 0
+                if action:
+                    self.action(bx, ex, by, ey)
+
+    def _dynamic_search_budget(self, seed_score):
+        """根据快速基线分数分配搜索预算：越有希望的局面搜得越久。"""
+        if seed_score >= 145:
+            budget = 20.0
+        elif seed_score >= 135:
+            budget = 14.0
+        elif seed_score >= 125:
+            budget = 10.0
+        elif seed_score >= 115:
+            budget = 8.0
+        elif seed_score >= 105:
+            budget = 6.0
+        else:
+            budget = 4.0
+
+        # 如果用户设置了较高阈值，并且快速基线已经接近阈值，额外多给一点机会。
+        threshold = getattr(self, 'thd', None)
+        if threshold is not None and threshold >= 100:
+            gap = threshold - seed_score
+            if 0 < gap <= 5:
+                budget = max(budget, 20.0)
+            elif 0 < gap <= 10:
+                budget = max(budget, 14.0)
+
+        return budget
+
+    def cal_rollout_search(self, action=False, time_budget=None, max_rollouts=256):
+        """动作级随机前瞻搜索。
+
+        与“先跑几个固定策略再择优”不同，这里在每个合法矩形动作粒度上做搜索：
+        每次 rollout 都会逐步选择单个动作，并在后盘扩大探索范围。这样可以找到
+        贪心/固定排序不会走到的细粒度消除顺序。
+        """
+        if self.terminate:
+            return
+
+        start_matrix = self.cal_matrix.copy()
+        start_key = start_matrix.tobytes()
+
+        cache = getattr(self, '_rollout_cache', None)
+        if action and cache is not None and cache.get('key') == start_key:
+            print(f"\t使用缓存操作序列，预测分数:{cache['score']}")
+            self._replay_move_sequence(start_matrix, cache['moves'], action=True)
+            return
+
+        best_score = -1
+        best_matrix = None
+        best_moves = []
+        best_source = None
+
+        for score, final_matrix, moves_done, source in self._policy_seeds(start_matrix):
+            if score > best_score:
+                best_score = score
+                best_matrix = final_matrix
+                best_moves = moves_done
+                best_source = source
+
+        dynamic_budget = time_budget is None
+        if dynamic_budget:
+            time_budget = self._dynamic_search_budget(best_score)
+        print(f'\t初始潜力:{best_score}，初始预算:{time_budget:.1f}s')
+
+        seed_base = self._matrix_seed(start_matrix)
+        begin = time.time()
+        rollouts = 0
+
+        while rollouts < max_rollouts and time.time() - begin < time_budget:
+            score, final_matrix, moves_done = self._stochastic_rollout(start_matrix, seed_base + rollouts)
+            rollouts += 1
+            if score > best_score:
+                best_score = score
+                best_matrix = final_matrix
+                best_moves = moves_done
+                best_source = f'rollout#{rollouts}'
+                if dynamic_budget:
+                    next_budget = self._dynamic_search_budget(best_score)
+                    if next_budget > time_budget:
+                        time_budget = next_budget
+                        print(f'\t潜力提升到 {best_score}，搜索预算延长到 {time_budget:.1f}s')
+
+        elapsed = time.time() - begin
+        print(f'\t计算完成，预测分数:{best_score}，采样:{rollouts}次，用时:{elapsed:.2f}s')
+
+        self._rollout_cache = {
+            'key': start_key,
+            'score': best_score,
+            'moves': best_moves,
+        }
+
+        if action:
+            self._replay_move_sequence(start_matrix, best_moves, action=True)
+        else:
+            self.cal_matrix = best_matrix
                 
 if __name__ == '__main__':
     runner = eliminater()
